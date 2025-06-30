@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Airplane Game Enhanced</title>
+<style>
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(to bottom, #87ceeb, #f0f8ff);
+    text-align: center;
+    user-select: none;
+  }
+  canvas {
+    border: 3px solid #333;
+    background: linear-gradient(to bottom, #c0eaff, #e0f7ff);
+    display: block;
+    margin: 20px auto;
+  }
+  #colorButtons {
+    margin: 15px 0;
+  }
+  .colorBtn {
+    border: none;
+    padding: 10px 18px;
+    margin: 5px;
+    border-radius: 7px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    color: white;
+    transition: background-color 0.3s ease;
+  }
+  .green {
+    background-color: #2ecc71;
+  }
+  .red {
+    background-color: #e74c3c;
+  }
+  .blue {
+    background-color: #3498db;
+  }
+  .purple {
+    background-color: #9b59b6;
+  }
+  .orange {
+    background-color: #e67e22;
+  }
+  .colorBtn:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+  #flyButton, #startButton {
+    background-color: #2980b9;
+    color: white;
+    border: none;
+    padding: 14px 28px;
+    font-size: 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
+    margin: 10px 8px;
+    transition: background-color 0.3s ease;
+  }
+  #flyButton:hover:not(:disabled), #startButton:hover:not(:disabled) {
+    background-color: #2471a3;
+  }
+  #flyButton:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+  }
+  p {
+    font-size: 18px;
+    color: #222;
+  }
+</style>
+</head>
+<body tabindex="0" onkeydown="keyDownHandler(event)" onkeyup="keyUpHandler(event)">
+
+<h2>✈️ Airplane Game - Choose Obstacle Colors & Fly! ✈️</h2>
+
+<div id="colorButtons">
+  <button class="colorBtn green" onclick="setObstacleColors('#27ae60', '#8e581d')">Green & Brown</button>
+  <button class="colorBtn red" onclick="setObstacleColors('#c0392b', '#2c3e50')">Red & Black</button>
+  <button class="colorBtn blue" onclick="setObstacleColors('#2980b9', '#7f8c8d')">Blue & Gray</button>
+  <button class="colorBtn purple" onclick="setObstacleColors('#8e44ad', '#34495e')">Purple & Dark Blue</button>
+  <button class="colorBtn orange" onclick="setObstacleColors('#d35400', '#f39c12')">Orange & Yellow</button>
+</div>
+
+<button id="startButton" onclick="startGame()">▶️ Start Game</button>
+<button id="flyButton"
+  onmousedown="accelerate(-0.25)"
+  onmouseup="accelerate(0.05)"
+  onmouseleave="accelerate(0.05)"
+  disabled>
+  ✈️ Fly (Hold or Spacebar)
+</button>
+
+<p>Use the Fly button or press & hold <b>SPACEBAR</b> to stay in the air.</p>
+
+<script>
+let myGamePiece;
+let myObstacles = [];
+let myScore;
+let gameOver = false;
+let highScore = localStorage.getItem('airplaneHighScore') || 0;
+
+let obstacleTopColor = '#27ae60';    // Default Green
+let obstacleBottomColor = '#8e581d'; // Default Brown
+
+// Sounds
+const flySound = new Audio('https://actions.google.com/sounds/v1/transportation/airplane_flyby.ogg');
+flySound.volume = 0.2;
+flySound.loop = true;
+
+const crashSound = new Audio('https://actions.google.com/sounds/v1/impacts/crash.ogg');
+crashSound.volume = 0.5;
+
+function startGame() {
+  if (!gameOver && myGameArea.interval) {
+    return; // Game already running
+  }
+  // Reset game state
+  myGamePiece = new component(40, 30, "airplane", 10, 120);
+  myGamePiece.gravity = 0.05;
+  myGamePiece.gravitySpeed = 0;
+  myScore = new component("24px", "'Segoe UI'", "black", 10, 30, "text-bg");
+  myScore.text = "SCORE: 0";
+  myObstacles = [];
+  gameOver = false;
+
+  // Disable start and color buttons, enable fly button
+  document.getElementById('startButton').disabled = true;
+  setColorButtonsDisabled(true);
+  document.getElementById('flyButton').disabled = false;
+
+  flySound.play();
+
+  myGameArea.start();
+}
+
+const myGameArea = {
+  canvas: document.createElement('canvas'),
+  start: function () {
+    this.canvas.width = 480;
+    this.canvas.height = 270;
+    this.context = this.canvas.getContext('2d');
+    if (!this.canvas.parentNode) {
+      document.body.insertBefore(this.canvas, document.body.childNodes[0]);
+    }
+    this.frameNo = 0;
+    if (this.interval) clearInterval(this.interval);
+    this.interval = setInterval(updateGameArea, 20);
+  },
+  clear: function () {
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  },
+  stop: function () {
+    clearInterval(this.interval);
+    gameOver = true;
+    flySound.pause();
+    flySound.currentTime = 0;
+    crashSound.play();
+
+    // Enable start and color buttons, disable fly button
+    document.getElementById('startButton').disabled = false;
+    setColorButtonsDisabled(false);
+    document.getElementById('flyButton').disabled = true;
+
+    // Update high score if needed
+    const score = this.frameNo - 1;
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem('airplaneHighScore', highScore);
+    }
+
+    drawGameOver(score, highScore);
+  }
+};
+
+function component(width, height, color, x, y, type) {
+  this.type = type;
+  this.width = width;
+  this.height = height;
+  this.x = x;
+  this.y = y;
+  this.speedX = 0;
+  this.speedY = 0;
+  this.gravity = 0;
+  this.gravitySpeed = 0;
+  this.rotation = 0;  // radians
+
+  if (type === 'airplane') {
+    this.image = new Image();
+    this.image.src = "https://i.imgur.com/Z3f8N1T.png";  // Airplane image
+  }
+
+  this.update = function () {
+    const ctx = myGameArea.context;
+    ctx.save();
+
+    if (this.type === 'text-bg') {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+      ctx.fillRect(this.x - 5, this.y - 24, 160, 30);
+      ctx.font = this.width + " " + this.height;
+      ctx.fillStyle = color;
+      ctx.fillText(this.text, this.x, this.y);
+    } else if (this.type === 'airplane') {
+      // Draw airplane with rotation for tilt effect
+      ctx.translate(this.x + this.width/2, this.y + this.height/2);
+      ctx.rotate(this.rotation);
+      ctx.drawImage(this.image, -this.width/2, -this.height/2, this.width, this.height);
+    } else {
+      ctx.fillStyle = color;
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+    ctx.restore();
+  };
+
+  this.newPos = function () {
+    this.gravitySpeed += this.gravity;
+    this.y += this.speedY + this.gravitySpeed;
+    this.hitBottom();
+
+    // Tilt airplane based on vertical speed (max ±0.35 radians ~ 20°)
+    this.rotation = Math.min(Math.max(this.gravitySpeed * -0.7, -0.35), 0.35);
+  };
+
+  this.hitBottom = function () {
+    const rockBottom = myGameArea.canvas.height - this.height;
+    if (this.y > rockBottom) {
+      this.y = rockBottom;
+      this.gravitySpeed = 0;
+    }
+    if (this.y < 0) {
+      this.y = 0;
+      this.gravitySpeed = 0;
+    }
+  };
+
+  this.crashWith = function (otherobj) {
+    const myleft = this.x;
+    const myright = this.x + this.width;
+    const mytop = this.y;
+    const mybottom = this.y + this.height;
+    const otherleft = otherobj.x;
+    const otherright = otherobj.x + otherobj.width;
+    const othertop = otherobj.y;
+    const otherbottom = otherobj.y + otherobj.height;
+    let crash = true;
+    if ((mybottom < othertop) || (mytop > otherbottom) || (myright < otherleft) || (myleft > otherright)) {
+      crash = false;
+    }
+    return crash;
+  };
+}
+
+function updateGameArea() {
+  if (gameOver) return;
+
+  for (let i = 0; i < myObstacles.length; i++) {
+    if (myGamePiece.crashWith(myObstacles[i])) {
+      myGameArea.stop();
+      return;
+    }
+  }
+
+  myGameArea.clear();
+  myGameArea.frameNo += 1;
+
+  if (myGameArea.frameNo === 1 || everyinterval(130)) {
+    const x = myGameArea.canvas.width;
+    const minHeight = 20;
+    const maxHeight = 180;
+    const height = Math.floor(Math.random() * (maxHeight - minHeight + 1) + minHeight);
+    const minGap = 70;
+    const maxGap = 120;
+    const gap = Math.floor(Math.random() * (maxGap - minGap + 1) + minGap);
+
+    // Top obstacle
+    myObstacles.push(new component(14, height, obstacleTopColor, x, 0));
+    // Bottom obstacle
+    myObstacles.push(new component(14, myGameArea.canvas.height - height - gap, obstacleBottomColor, x, height + gap));
+  }
+
+  // Move and update obstacles
+  for (let i = 0; i < myObstacles.length; i++) {
+    myObstacles[i].x += -1;
+    myObstacles[i].update();
+  }
+
+  // Remove offscreen obstacles
+  myObstacles = myObstacles.filter(ob => ob.x + ob.width > 0);
+
+  myScore.text = "SCORE: " + (myGameArea.frameNo - 1);
+  myScore.update();
+
+  myGamePiece.newPos();
+  myGamePiece.update();
+}
+
+function everyinterval(n) {
+  return (myGameArea.frameNo / n) % 1 === 0;
+}
+
+function accelerate(n) {
+  if (!gameOver) {
+    myGamePiece.gravity = n;
+  }
+}
+
+function setObstacleColors(topColor, bottomColor) {
+  if (!gameOver) { // Only allow color change when game is stopped
+    obstacleTopColor = topColor;
+    obstacleBottomColor = bottomColor;
+  }
+}
+
+function keyDownHandler(e) {
+  if (e.code === 'Space' || e.key === ' ') {
+    e.preventDefault();
+    accelerate(-0.25);
+  }
+}
+
+function keyUpHandler(e) {
+  if (e.code === 'Space' || e.key === ' ') {
+    e.preventDefault();
+    accelerate(0.05);
+  }
+}
+
+function setColorButtonsDisabled(disabled) {
+  const buttons = document.querySelectorAll('.colorBtn');
+  buttons.forEach(btn => btn.disabled = disabled);
+}
+
+function drawGameOver(score, highScore) {
+  const ctx = myGameArea.context;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(0, 0, myGameArea.canvas.width, myGameArea.canvas.height);
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 36px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.fillText('💥 Game Over!', myGameArea.canvas.width / 2, myGameArea.canvas.height / 2 - 30);
+  ctx.font = '24px Segoe UI';
+  ctx.fillText(`Score: ${score}`, myGameArea.canvas.width / 2, myGameArea.canvas.height / 2 + 10);
+  ctx.fillText(`High Score: ${highScore}`, myGameArea.canvas.width / 2, myGameArea.canvas.height / 2 + 50);
+}
+</script>
+
+</body>
+</html>
